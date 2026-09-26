@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources xmlns:tools="http://schemas.android.com/tools">
+    <style name="Theme.Khallaqi" parent="Theme.MaterialComponents.DayNight.NoActionBar">
+        <item name="colorPrimary">#a855f7</item>
+        <item name="colorPrimaryVariant">#7c3aed</item>
+        <item name="colorOnPrimary">#ffffff</item>
+        <item name="android:statusBarColor">#05060c</item>
+        <item name="android:navigationBarColor">#05060c</item>
+        <item name="android:windowBackground">#05060c</item>
+        <item name="android:windowLightStatusBar" tools:targetApi="m">false</item>
+    </style>
+</resources>
