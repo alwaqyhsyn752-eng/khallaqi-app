@@ -7,8 +7,10 @@ import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.speech.tts.TextToSpeech
 import android.view.KeyEvent
 import android.view.View
+import android.webkit.JavascriptInterface
 import android.webkit.PermissionRequest
 import android.webkit.WebChromeClient
 import android.webkit.WebResourceError
@@ -16,9 +18,6 @@ import android.webkit.WebResourceRequest
 import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebViewClient
-import android.speech.tts.TextToSpeech
-import android.webkit.JavascriptInterface
-import java.util.Locale
 import android.widget.Button
 import android.widget.LinearLayout
 import android.widget.ProgressBar
@@ -26,6 +25,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
 import androidx.swiperefreshlayout.widget.SwipeRefreshLayout
+import java.util.Locale
 
 class MainActivity : AppCompatActivity() {
 
@@ -47,55 +47,52 @@ class MainActivity : AppCompatActivity() {
         setContentView(R.layout.activity_main)
 
         webView = findViewById(R.id.webView)
-swipeRefresh = findViewById(R.id.swipeRefresh)
-progressBar = findViewById(R.id.progressBar)
-errorView = findViewById(R.id.errorView)
+        swipeRefresh = findViewById(R.id.swipeRefresh)
+        progressBar = findViewById(R.id.progressBar)
+        errorView = findViewById(R.id.errorView)
 
-// ═══ SwipeRefresh: only enable at top ═══
-swipeRefresh.isEnabled = false
-swipeRefresh.setOnChildScrollUpCallback { _, _ ->
-    webView.canScrollVertically(-1)
-    override fun onDestroy() {
-    if (::tts.isInitialized) {
-        try { tts.stop(); tts.shutdown() } catch (e: Exception) {}
-    }
-    super.onDestroy()
-    }
-}
-
-// ═══ Native Android TTS (Arabic Saudi) ═══
-tts = TextToSpeech(this) { status ->
-    if (status == TextToSpeech.SUCCESS) {
-        val saudi = Locale("ar", "SA")
-        val r = tts.setLanguage(saudi)
-        if (r == TextToSpeech.LANG_MISSING_DATA || r == TextToSpeech.LANG_NOT_SUPPORTED) {
-            tts.setLanguage(Locale("ar"))
+        // ═══ SwipeRefresh: only enable at top (prevents unwanted reload) ═══
+        swipeRefresh.isEnabled = true
+        swipeRefresh.setOnChildScrollUpCallback { _, _ ->
+            webView.canScrollVertically(-1)
         }
-        tts.setPitch(1.08f)
-        tts.setSpeechRate(1.0f)
-    }
-}
 
-webView.addJavascriptInterface(object {
-    @JavascriptInterface
-    fun speak(text: String) {
-        runOnUiThread {
-            try {
-                val clean = text
-                    .replace(Regex("```[\\s\\S]*?```"), " كود ")
-                    .replace(Regex("`([^`]+)`"), "$1")
-                    .replace(Regex("[#*_]"), "")
-                    .take(2000)
-                tts.speak(clean, TextToSpeech.QUEUE_FLUSH, null, "khallaqi_tts")
-            } catch (e: Exception) {}
+        // ═══ Native Android TTS (Arabic Saudi voice) ═══
+        tts = TextToSpeech(this) { status ->
+            if (status == TextToSpeech.SUCCESS) {
+                val saudi = Locale("ar", "SA")
+                val result = tts.setLanguage(saudi)
+                if (result == TextToSpeech.LANG_MISSING_DATA || result == TextToSpeech.LANG_NOT_SUPPORTED) {
+                    tts.setLanguage(Locale("ar"))
+                }
+                tts.setPitch(1.08f)
+                tts.setSpeechRate(1.0f)
+            }
         }
-    }
 
-    @JavascriptInterface
-    fun stop() {
-        runOnUiThread { try { tts.stop() } catch (e: Exception) {} }
-    }
-}, "AndroidTTS")
+        // ═══ JS Bridge for Native TTS ═══
+        webView.addJavascriptInterface(object {
+            @JavascriptInterface
+            fun speak(text: String) {
+                runOnUiThread {
+                    try {
+                        val clean = text
+                            .replace(Regex("```[\\s\\S]*?```"), " كود ")
+                            .replace(Regex("`([^`]+)`"), "$1")
+                            .replace(Regex("[#*_]"), "")
+                            .take(2000)
+                        tts.speak(clean, TextToSpeech.QUEUE_FLUSH, null, "khallaqi_tts")
+                    } catch (e: Exception) { }
+                }
+            }
+
+            @JavascriptInterface
+            fun stop() {
+                runOnUiThread {
+                    try { tts.stop() } catch (e: Exception) { }
+                }
+            }
+        }, "AndroidTTS")
 
         val settings = webView.settings
         settings.javaScriptEnabled = true
@@ -125,21 +122,17 @@ webView.addJavascriptInterface(object {
                 } else {
                     try {
                         startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
-                    } catch (_: Exception) {}
+                    } catch (_: Exception) { }
                     true
                 }
             }
+
             override fun onPageFinished(view: WebView?, url: String?) {
-    super.onPageFinished(view, url)
-    progressBar.visibility = View.GONE
-    swipeRefresh.isRefreshing = false
-    errorView.visibility = View.GONE
-    webView.visibility = View.VISIBLE
-            }
-override fun onPageCommitVisible(view: WebView?, url: String?) {
-    super.onPageCommitVisible(view, url)
-    view?.clearCache(false)
-}
+                super.onPageFinished(view, url)
+                progressBar.visibility = View.GONE
+                swipeRefresh.isRefreshing = false
+                errorView.visibility = View.GONE
+                webView.visibility = View.VISIBLE
             }
 
             override fun onReceivedError(
@@ -225,5 +218,15 @@ override fun onPageCommitVisible(view: WebView?, url: String?) {
     override fun onRestoreInstanceState(savedInstanceState: Bundle) {
         super.onRestoreInstanceState(savedInstanceState)
         webView.restoreState(savedInstanceState)
+    }
+
+    override fun onDestroy() {
+        if (::tts.isInitialized) {
+            try {
+                tts.stop()
+                tts.shutdown()
+            } catch (e: Exception) { }
+        }
+        super.onDestroy()
     }
 }
