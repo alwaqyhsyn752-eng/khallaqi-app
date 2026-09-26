@@ -16,6 +16,9 @@ import android.webkit.WebResourceRequest
 import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebViewClient
+import android.speech.tts.TextToSpeech
+import android.webkit.JavascriptInterface
+import java.util.Locale
 import android.widget.Button
 import android.widget.LinearLayout
 import android.widget.ProgressBar
@@ -30,6 +33,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var swipeRefresh: SwipeRefreshLayout
     private lateinit var progressBar: ProgressBar
     private lateinit var errorView: LinearLayout
+    private lateinit var tts: TextToSpeech
 
     private val SITE_URL = "https://gemini-api-key-xofn.onrender.com"
 
@@ -43,9 +47,55 @@ class MainActivity : AppCompatActivity() {
         setContentView(R.layout.activity_main)
 
         webView = findViewById(R.id.webView)
-        swipeRefresh = findViewById(R.id.swipeRefresh)
-        progressBar = findViewById(R.id.progressBar)
-        errorView = findViewById(R.id.errorView)
+swipeRefresh = findViewById(R.id.swipeRefresh)
+progressBar = findViewById(R.id.progressBar)
+errorView = findViewById(R.id.errorView)
+
+// ═══ SwipeRefresh: only enable at top ═══
+swipeRefresh.isEnabled = false
+swipeRefresh.setOnChildScrollUpCallback { _, _ ->
+    webView.canScrollVertically(-1)
+    override fun onDestroy() {
+    if (::tts.isInitialized) {
+        try { tts.stop(); tts.shutdown() } catch (e: Exception) {}
+    }
+    super.onDestroy()
+    }
+}
+
+// ═══ Native Android TTS (Arabic Saudi) ═══
+tts = TextToSpeech(this) { status ->
+    if (status == TextToSpeech.SUCCESS) {
+        val saudi = Locale("ar", "SA")
+        val r = tts.setLanguage(saudi)
+        if (r == TextToSpeech.LANG_MISSING_DATA || r == TextToSpeech.LANG_NOT_SUPPORTED) {
+            tts.setLanguage(Locale("ar"))
+        }
+        tts.setPitch(1.08f)
+        tts.setSpeechRate(1.0f)
+    }
+}
+
+webView.addJavascriptInterface(object {
+    @JavascriptInterface
+    fun speak(text: String) {
+        runOnUiThread {
+            try {
+                val clean = text
+                    .replace(Regex("```[\\s\\S]*?```"), " كود ")
+                    .replace(Regex("`([^`]+)`"), "$1")
+                    .replace(Regex("[#*_]"), "")
+                    .take(2000)
+                tts.speak(clean, TextToSpeech.QUEUE_FLUSH, null, "khallaqi_tts")
+            } catch (e: Exception) {}
+        }
+    }
+
+    @JavascriptInterface
+    fun stop() {
+        runOnUiThread { try { tts.stop() } catch (e: Exception) {} }
+    }
+}, "AndroidTTS")
 
         val settings = webView.settings
         settings.javaScriptEnabled = true
@@ -79,13 +129,17 @@ class MainActivity : AppCompatActivity() {
                     true
                 }
             }
-
             override fun onPageFinished(view: WebView?, url: String?) {
-                super.onPageFinished(view, url)
-                progressBar.visibility = View.GONE
-                swipeRefresh.isRefreshing = false
-                errorView.visibility = View.GONE
-                webView.visibility = View.VISIBLE
+    super.onPageFinished(view, url)
+    progressBar.visibility = View.GONE
+    swipeRefresh.isRefreshing = false
+    errorView.visibility = View.GONE
+    webView.visibility = View.VISIBLE
+            }
+override fun onPageCommitVisible(view: WebView?, url: String?) {
+    super.onPageCommitVisible(view, url)
+    view?.clearCache(false)
+}
             }
 
             override fun onReceivedError(
